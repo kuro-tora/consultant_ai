@@ -1,9 +1,15 @@
-# 機密ファイル
+# Environment variables
 .env
-secrets.yaml
-serviceAccountKey.json
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Python関連
+# Firebase service account key
+serviceAccountKey.json
+secrets.yaml
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -28,45 +34,22 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Environments
-.env
-.venv
+# Virtual environment
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
 
-# IDE設定
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS固有ファイル
+# OS
 .DS_Store
 .DS_Store?
 ._*
@@ -75,10 +58,10 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# ログファイル
+# Logs
 *.log
 logs/
 
-# 一時ファイル
+# Temporary files
 *.tmp
 *.temp

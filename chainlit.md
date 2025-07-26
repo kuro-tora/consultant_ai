@@ -1,14 +1,28 @@
-# Welcome to Chainlit! 🚀🤖
+# 業務・案件マッチングシステム �
 
-Hi there, Developer! 👋 We're excited to have you on board. Chainlit is a powerful tool designed to help you prototype, debug and share applications built on top of LLMs.
+業務・案件マッチングのためのAIインタビューシステムへようこそ！
 
-## Useful Links 🔗
+## 🎯 システムの目的
 
-- **Documentation:** Get started with our comprehensive [Chainlit Documentation](https://docs.chainlit.io) 📚
-- **Discord Community:** Join our friendly [Chainlit Discord](https://discord.gg/k73SQ3FyUh) to ask questions, share your projects, and connect with other developers! 💬
+このシステムは、あなたのスキル、経験、希望に最適な業務や案件をマッチングするために設計されました。AIエージェントがあなたとの対話を通じて、詳細な情報を収集し、最適な提案を行います。
 
-We can't wait to see what you create with Chainlit! Happy coding! 💻😊
+## 🤖 AIエージェント構成
 
-## Welcome screen
+- **管理AI**: インタビュー全体の進行管理
+- **業務質問生成AI**: 現在の業務内容やスキルに関する質問
+- **希望質問生成AI**: 今後の希望や要望に関する質問  
+- **ネイチャリングAI**: インタビュー導入とサポート
 
-To modify the welcome screen, edit the `chainlit.md` file at the root of your project. If you do not want a welcome screen, just leave this file empty.
+## 📋 インタビューの流れ
+
+1. **ネイチャリングフェーズ**: システム説明と心理的安全性の確保
+2. **業務詳細フェーズ**: 現在の業務、スキル、経験の詳細ヒアリング
+3. **希望・要望フェーズ**: 今後の希望、条件、懸念点のヒアリング
+
+## 🛡️ プライバシー保護
+
+- すべての情報は適切に暗号化されて保存されます
+- 個人情報は厳格に管理され、マッチング目的でのみ使用されます
+- インタビューはいつでも中断可能です
+
+準備ができましたら「開始」と入力してください。

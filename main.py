@@ -88,17 +88,25 @@ PROMPTS_manager = { "manager": {
             1. 進行管理：制限時間に合わせて各質問の終了・次質問への移行を判断
             2. ゴール監視：事前に設定した「聞くべきトピック」をカバーできているかトラッキング
             3. フェーズ管理：「業務詳細フェーズ」から「希望・要望フェーズ」への移行を判断
+            4. 深掘り判断：回答が浅い場合や詳細が不足している場合の深掘りを決定
 
             ヒアリングは2つのフェーズに分かれています：
             - 業務詳細フェーズ：現在の業務内容、スキル、経験、課題などの客観的情報を収集
             - 希望・要望フェーズ：今後の希望、要望、条件、懸念など、主観的な情報を収集
 
             ヒアリング全体の流れを見て、次のアクションを決定してください：
-            - deep_dive: 同じトピックでさらに深掘りする
-            - switch_topic: 特定のトピックへ移行する
-            - switch_phase: 次のフェーズに移行する（業務詳細→希望・要望）
-            - end_interview: ヒアリングを終了する
+            - deep_dive: 回答が抽象的・曖昧・短い場合、または重要な詳細が不足している場合に実行
+            - switch_topic: 現在のトピックが十分にカバーされた場合に次のトピックへ移行
+            - switch_phase: 現フェーズのトピックが十分にカバーされた場合に次フェーズへ移行
+            - end_interview: 全てのトピックが適切にカバーされた場合にヒアリングを終了
 
+            【深掘りを行うべき状況】
+            - 回答が「はい」「いいえ」など単純すぎる
+            - 具体的な数値、期間、頻度が不明
+            - 経験やスキルのレベルが不明確
+            - 課題や改善点が表面的
+            - 感情や動機が不明
+            
             業務詳細フェーズのトピックが十分にカバーできたら、希望・要望フェーズへの移行を指示してください。
             「次はあなたの今後の希望や要望についてお聞きします」などのメッセージで移行をスムーズにします。
             """"")
@@ -165,6 +173,7 @@ PROMPTS_business_Qgenerator = {
             ・事実と具体例を重視し、経験年数、習得レベル、実績等の定量的情報を引き出す。
             ・質問は具体的かつ明確にし、1つの論点に絞る。曖昧な回答は掘り下げる。
             ・経験・スキルの全体像から詳細、強み・弱みへと順に把握する。
+            ・深掘り質問では「具体的には？」「例えば？」「どのような場面で？」を活用する。
         ❷ 以下の質問カテゴリーを参考に、状況に応じて質問を選択・組み合わせること。
         ❸ ヒアリングで収集した主要情報を簡潔に要約し、ユーザーに確認を求めること。
         ❹ 次のステップや今後の進め方を簡潔に伝え、ヒアリングを終了すること。
@@ -694,7 +703,7 @@ async def on_message(message: cl.Message):
         y_manager=cl.user_session.get("y_manager")
 
         def get_current_question_generator():
-            if session.current_phase == "業務内容フェーズ":
+            if session.current_phase == "業務詳細フェーズ":
                 return business_Qgenerator
             else:  
                 return emotional_Qgenerator
@@ -759,12 +768,24 @@ async def on_message(message: cl.Message):
             - カバー済みトピック: {', '.join(session.covered_topics)}
             - 未カバートピック: {', '.join(session.topics_to_cover)}
             - 現在のトピック: {session.current_topic}
+            
             【最新の質問と回答】
             質問: {current_question}
             回答: {answer}
+            
+            【これまでの会話履歴】
+            {session.get_full_transcript()}
+            
+            【判断基準】
+            回答の内容を分析して、以下の観点で深掘りが必要かを判断してください：
+            1. 回答の具体性：抽象的すぎないか、具体例があるか
+            2. 情報の完全性：数値、期間、頻度等の定量的情報があるか
+            3. 深度：表面的でないか、背景や理由が説明されているか
+            4. 業務マッチングに必要な情報：スキルレベル、経験の詳細、課題認識等が明確か
+            
             次のアクションを決定してください。
             回答内容を見て、深掘りが必要か、次のトピックに進むべきか、
-            フェーズを切り替えるべきか、インタビューを終了すべきかを判断してください。
+            フェーズを切り替えるべきか、ヒアリングを終了すべきかを判断してください。
             ただし同じような質問は二度行わないようにしてください。
             """
             # manager_context = f"""
@@ -877,18 +898,29 @@ async def on_message(message: cl.Message):
 
             elif manager_action.action_type == "deep_dive":
                 # 深掘り質問
+                question_generator = get_current_question_generator()
                 deep_dive_context = f"""
                 【現在のフェーズ】
                 {session.current_phase}
                 【現在のトピック】
                 {session.current_topic}
+                【これまでの会話履歴】
+                {session.get_full_transcript()}
                 【直前の質問】
                 {current_question}
                 【回答】
                 {answer}
+                
                 上記の回答をさらに深掘りする質問を生成してください。
-                具体的な数値や例を引き出す質問が望ましいです。"""
-                question_generator = get_current_question_generator()
+                以下の観点で深掘りしてください：
+                - 具体的な数値、期間、頻度を引き出す
+                - 具体例や事例を求める
+                - 背景や理由を詳しく聞く
+                - 課題や改善点を探る
+                - 感情や印象を掘り下げる
+                
+                回答者が詳しく語れるよう、オープンエンドな質問を心がけてください。
+                """
                 question_result,log_entry = await run_ai_with_logging(question_generator, deep_dive_context)
                 interview_question = question_result.final_output_as(InterviewQuestion)
                 current_question = interview_question.question

@@ -559,6 +559,64 @@ class InterviewSession:
         }
         self.topics_to_cover = self.phase_topics[self.current_phase].copy()
         self.current_topic = self.topics_to_cover[0] if self.topics_to_cover else None
+        # 20属性トラッキング
+        self.attribute_order = [
+            {"slug": "情報入手日", "phase": "business"},
+            {"slug": "人材ID", "phase": "business"},
+            {"slug": "会社略称", "phase": "business"},
+            {"slug": "名前", "phase": "business"},
+            {"slug": "人材種別1", "phase": "business"},
+            {"slug": "AC在籍有無", "phase": "business"},
+            {"slug": "AC在籍期間", "phase": "business"},
+            {"slug": "性別", "phase": "business"},
+            {"slug": "年齢", "phase": "business"},
+            {"slug": "稼働率", "phase": "emotional"},
+            {"slug": "稼働開始可能日", "phase": "emotional"},
+            {"slug": "希望単価", "phase": "emotional"},
+            {"slug": "並行営業", "phase": "emotional"},
+            {"slug": "リモート希望", "phase": "emotional"},
+            {"slug": "可能地域", "phase": "emotional"},
+            {"slug": "英語スキル", "phase": "emotional"},
+            {"slug": "アピールポイント", "phase": "emotional"},
+            {"slug": "直近の実績", "phase": "business"},
+            {"slug": "レジュメ所在LINK URL", "phase": "business"},
+            {"slug": "備考", "phase": "emotional"},
+        ]
+        # 値: {value: str|None, status: pending/obtained/refused/unknown}
+        self.attributes = {item["slug"]: {"value": None, "status": "pending"} for item in self.attribute_order}
+        self.current_attribute_slug = None
+
+    def get_remaining_attributes(self, phase_preference: str = None):
+        """未取得属性一覧（任意でフェーズ優先フィルタ）"""
+        rem = [a for a in self.attribute_order if self.attributes[a["slug"]]["status"] == "pending"]
+        if phase_preference:
+            primary = [a for a in rem if a["phase"] == phase_preference]
+            secondary = [a for a in rem if a["phase"] != phase_preference]
+            return primary + secondary
+        return rem
+
+    def mark_attribute(self, slug: str, answer: str):
+        if slug not in self.attributes or self.attributes[slug]["status"] != "pending":
+            return
+        ans = (answer or "").strip()
+        if not ans:
+            return
+        refusal_keywords = ["答えたくない", "非公開", "秘密", "わからない", "不明", "覚えていない", "無し", "ないです"]
+        if any(k in ans for k in refusal_keywords):
+            self.attributes[slug]["value"] = None
+            self.attributes[slug]["status"] = "refused" if any(k in ans for k in ["答えたくない", "非公開", "秘密"]) else "unknown"
+        else:
+            self.attributes[slug]["value"] = ans
+            self.attributes[slug]["status"] = "obtained"
+
+    def attributes_table_text(self):
+        lines = []
+        for item in self.attribute_order:
+            slug = item["slug"]
+            info = self.attributes[slug]
+            val = info["value"] if info["value"] is not None else "-"
+            lines.append(f"{slug}: {info['status']} / {val}")
+        return "\n".join(lines)
     
     def set_company_email(self, company_email):
         self.company_email = company_email
@@ -803,16 +861,35 @@ async def on_message(message: cl.Message):
                 return business_Qgenerator
             else:  
                 return emotional_Qgenerator
+
+        def decide_next_attribute():
+            # フェーズ優先で未取得属性を決める
+            phase_pref = "business" if session.current_phase == "業務内容フェーズ" else "emotional"
+            rem = session.get_remaining_attributes(phase_pref)
+            if rem:
+                return rem[0]["slug"]
+            return None
         
         # 初回質問の準備
         question_generator = get_current_question_generator()
-        initial_context = f"""
-        【現在のフェーズ】
-        {session.current_phase}
-        【現在のトピック】
-        {session.current_topic}
-        最初の質問を生成してください。
-        """
+        # 初回は未取得属性があればそれを聞く指示を与える
+        next_attr = decide_next_attribute()
+        session.current_attribute_slug = next_attr
+        if next_attr:
+            initial_context = f"""
+            【現在のフェーズ】
+            {session.current_phase}
+            【未取得属性状況】\n{session.attributes_table_text()}
+            次の未取得属性「{next_attr}」について 1 つだけ明確に質問してください。まだ取得済みの属性に触れないこと。質問は一文。
+            """
+        else:
+            initial_context = f"""
+            【現在のフェーズ】
+            {session.current_phase}
+            【現在のトピック】
+            {session.current_topic}
+            最初の質問を生成してください。
+            """
         # initial_context = f"""
         # 【インタビューコンテキスト】
         # {context_summary}
@@ -838,6 +915,10 @@ async def on_message(message: cl.Message):
             print(f"\n{session.current_phase}質問AI (Q{round_num}: {current_question}")
             answer =  user_input["output"]
             session.add_interview_qa(current_question, answer)
+            # 属性回答反映
+            if session.current_attribute_slug:
+                session.mark_attribute(session.current_attribute_slug, answer)
+                session.current_attribute_slug = None
             for i, (q, a) in enumerate(session.interview_history):
                 interview_history_text += f"Q{i+1}: {q}\nA{i+1}: {a}\n\n"
 
@@ -982,17 +1063,28 @@ async def on_message(message: cl.Message):
 
             elif manager_action.action_type == "deep_dive":
                 # 深掘り質問
-                deep_dive_context = f"""
-                【現在のフェーズ】
-                {session.current_phase}
-                【現在のトピック】
-                {session.current_topic}
-                【直前の質問】
-                {current_question}
-                【回答】
-                {answer}
-                上記の回答をさらに深掘りする質問を生成してください。
-                具体的な数値や例を引き出す質問が望ましいです。"""
+                # まだ未取得属性が残っているなら深掘りより属性優先
+                next_attr = decide_next_attribute()
+                if next_attr:
+                    session.current_attribute_slug = next_attr
+                    deep_dive_context = f"""
+                    【現在のフェーズ】
+                    {session.current_phase}
+                    【未取得属性状況】\n{session.attributes_table_text()}
+                    直前回答を踏まえつつ 未取得属性「{next_attr}」を自然に一問で取得してください。重複禁止。
+                    """
+                else:
+                    deep_dive_context = f"""
+                    【現在のフェーズ】
+                    {session.current_phase}
+                    【現在のトピック】
+                    {session.current_topic}
+                    【直前の質問】
+                    {current_question}
+                    【回答】
+                    {answer}
+                    上記の回答をさらに深掘りする質問を生成してください。
+                    具体的な数値や例を引き出す質問が望ましいです。"""
                 question_generator = get_current_question_generator()
                 question_result,log_entry = await run_ai_with_logging(question_generator, deep_dive_context)
                 interview_question = question_result.final_output_as(InterviewQuestion)
@@ -1019,18 +1111,29 @@ async def on_message(message: cl.Message):
 
             else:  # "next_question"
                 # 通常の次の質問
-                next_question_context = f"""
-                【現在のフェーズ】
-                {session.current_phase}
-                【現在のトピック】
-                {session.current_topic}
-                【過去の質問と回答】
-                {session.get_full_transcript()}
-                【残り時間】
-                {remaining_minutes:.1f}分
-                次の質問を生成してください。
-                過去に尋ねた質問と重複しないように注意してください。
-                """
+                # 未取得属性があれば属性優先質問
+                next_attr = decide_next_attribute()
+                session.current_attribute_slug = next_attr
+                if next_attr:
+                    next_question_context = f"""
+                    【現在のフェーズ】
+                    {session.current_phase}
+                    【未取得属性状況】\n{session.attributes_table_text()}
+                    未取得属性「{next_attr}」を一つだけ丁寧に質問してください。既取得属性へは触れない。質問は一文。
+                    """
+                else:
+                    next_question_context = f"""
+                    【現在のフェーズ】
+                    {session.current_phase}
+                    【現在のトピック】
+                    {session.current_topic}
+                    【過去の質問と回答】
+                    {session.get_full_transcript()}
+                    【残り時間】
+                    {remaining_minutes:.1f}分
+                    次の質問を生成してください。
+                    過去に尋ねた質問と重複しないように注意してください。
+                    """
             # else:  # "next_question"
             #     # 通常の次の質問
             #     next_question_context = f"""

@@ -106,95 +106,96 @@ PROMPTS_manager = { "manager": {
 
 PROMPTS_emotional_Qgenerator = {
     "emotional_Qgenerator": {
-                "instructions": ("""# あなたは共感をベースにしたコミュニケーションが得意な業務・案件マッチングコンサルタントです。
-        以下の手順と書式だけを守り、日本語で共感的な対話を行い、詳細な希望・要望を収集してください。
-        （指示にないことは実行しないこと）
+        "instructions": ("""# 役割
+あなたは希望・動機ヒアリングと不足属性補完を行う共感型インタビュアーです。
+出力は常に『未取得属性1件にのみフォーカスした日本語の質問文1つ』。余計な挨拶・要約・複数質問は禁止（全20属性確定後のみ要約誘導可）。
 
-                ────────────────────────────────
-                ▼強制チェック（客観20属性の補完責務）
-                あなたは感情フェーズ中であっても、以下の20属性のうち「未取得 / 不明 / 未確認」が残っている場合、
-                希望・動機に関連する属性（★印）については自然な流れで 1 質問 1 属性 で必ず補完する。 
-                （客観プロファイル寄りでビジネス側が担当すべき属性は、ビジネス側が未取得のまま感情フェーズへ移行した場合のみフォローする）
-                取得対象20属性（ビジネス/感情分担目安）:
-                    1. 情報入手日 (B)
-                    2. 人材ID (B)
-                    3. 会社略称 (B)
-                    4. 名前（イニシャル TY 形式）(B)
-                    5. 人材種別1 (B)
-                    6. AC在籍有無 (B)
-                    7. AC在籍期間 (B)
-                    8. 性別 (B) ※拒否時追及禁止
-                    9. 年齢 (B) ※年代可・拒否時追及禁止
-                 10. 稼働率 (★E)
-                 11. 稼働開始可能日 (★E)
-                 12. 希望単価 (★E)
-                 13. 並行営業 (★E)
-                 14. リモート希望 (★E)
-                 15. 可能地域 (★E)
-                 16. 英語スキル (★E)
-                 17. アピールポイント (★E)
-                 18. 直近の実績 (B) ※ビジネス未取得なら簡潔箇条書き依頼
-                 19. レジュメ所在LINK URL (B)
-                 20. 備考 (★E)
-                アルゴリズム:
-                    a. 回答履歴（あなたの内部記憶）を参照し未取得属性リストを保持。
-                    b. 感情フェーズ開始時 / 各回答後に未取得(★E)があれば最優先で次の質問をその1属性に限定。
-                    c. ユーザー発話が同時に複数属性を含んだら全て取得済みにマークし重複質問禁止。
-                    d. 拒否/不明は『属性名: 未回答（拒否/不明）』として確定し再質問禁止（年齢・性別等）。
-                    e. 取得済みの属性を再度直接聞かず、背景/動機/優先度/妥協ラインに焦点を移す。
-                    f. 全★E属性が埋まり、かつビジネス側未取得のB属性が残らない/又はセンシティブ拒否済みになった時点で通常の希望深掘りに専念。
-                    g. 全20属性ステータス確定後に 3〜5行で希望・動機サマリーを行い、次工程予告で感情フェーズを円滑に終了する。
-                出力は常に一つの質問文のみ（要約や並列表現はサマリー時以外禁止）。
+────────────────────────────────
+▼必須20属性（未取得がある限り優先 / 他質問禁止）
+1 情報入手日 / 2 人材ID / 3 会社略称 / 4 名前(イニシャル) / 5 人材種別1 / 6 AC在籍有無 / 7 AC在籍期間 / 8 性別(任意) / 9 年齢(任意/年代可) / 10 稼働率 / 11 稼働開始可能日 / 12 希望単価 / 13 並行営業 / 14 リモート希望 / 15 可能地域 / 16 英語スキル / 17 アピールポイント / 18 直近の実績(2～3件) / 19 レジュメ所在LINK URL / 20 備考
 
-        ────────────────────────────────
-        ▼ステップ 0 : 対象判定（事前フィルタ）
-        ❶ ユーザーからの入力が、業務・案件マッチングに関する希望・要望のヒアリングと関連性があるか確認せよ。
-        ❷ 以下のいずれかに該当する場合は、その旨を伝え、正確な情報の再入力を促し、このステップで即座に終了すること：
+▼取得アルゴリズム（厳守）
+A 全過去Q/A(システムが渡す履歴)から各属性が既に具体的に述べられているか逐次スキャンし取得済判定。
+B 未取得リストを番号昇順で保持。ターンごとに先頭1件のみ質問。1質問=1属性。
+C 回答内に複数属性が含まれたらその全てを取得済みにする。重複質問禁止。
+D 拒否/不明/覚えていない→『確定（拒否/不明）』扱いで再質問禁止。
+E あいまい値（例: "秋頃"）が来たら具体化再質問を同属性内で続行し、確定するまで次属性に進まない。
+F 直近の実績は役割/期間/技術/規模/成果 を最大3件箇条書きで求める指示を含める。
+G 希望単価は『○○万円/月（税抜 or 税込） 交渉余地: ／』形式を誘導。
+H URL 無し→後ほど共有依頼文を添えて『未入手（後ほど）』確定。
+I 20属性すべて取得 or 拒否/不明確定後、初めて希望優先度や動機深掘り質問へ移行。その最初の深掘り質問は「全属性取得が完了したので、まず希望条件で特に譲れない点はどれですか？」のように開始。
+J 深掘り段階でも1質問1論点。まとめ挿入は指示されるまでしない。
 
-            例：「恐れ入りますが、ご入力いただいた内容が、業務・案件マッチングに関するヒアリングの趣旨と異なるか、入力ミスの可能性がございます。お手数ですが、関連する希望・要望について再度ご入力いただけますでしょうか。」
+▼未取得時 推奨質問テンプレ（必要に応じ最小限言い換え可）
+1 情報入手日を YYYY-MM-DD 形式で教えてください。
+2 人材ID（管理番号）があれば教えてください。
+3 提案元の会社（略称）を教えてください。
+4 レジュメ用イニシャル（例: TY）を教えてください。
+5 最も強みとなる人材種別（領域）を一つ挙げてください。
+6 アクセンチュア在籍経験はありますか？（有 / 無）
+7 在籍期間をわかる範囲で教えてください。（無い/不明ならその旨）
+8 性別を共有可能でしょうか？（任意 / 拒否可）
+9 年齢または年代を共有可能でしょうか？（任意 / 拒否可）
+10 希望される稼働率（例: 80%）を教えてください。
+11 稼働開始可能日（最短/目安）を教えてください。
+12 希望単価を『○○万円/月（税抜 or 税込） 交渉余地: ○○』形式で教えてください。
+13 現在並行して他案件営業はありますか？（有 / 無）
+14 リモート/出社の希望（フル / 一部（頻度）/ 問わない）を教えてください。
+15 稼働可能な地域（都道府県や最寄駅レベル）を教えてください。
+16 英語スキルレベル（ビジネス / 日常 / 読み書き / 不可）と根拠を教えてください。
+17 アピールポイントを短いキャッチ＋簡潔補足で教えてください。
+18 直近2～3件の案件実績を役割/期間/技術/規模/成果で簡潔に箇条書きください。
+19 レジュメ共有リンク（Dropbox 等）があれば教えてください。無ければ後ほどでも構いません。
+20 その他備考（制約・留意点など）があれば教えてください。
 
-        ★妥当性チェックで「該当する」と判断するケースの例
-            ・業務や案件・キャリアと全く関連のない話題（例：「今日の天気は良いですね」）
-            ・意味をなさない文字列、極端に短い入力、記号の羅列など、明らかに意図が不明な入力
-        ────────────────────────────────
-        ▼ステップ 1 : 業務・案件マッチングに関する共感的対話（ステップ 0 を通過した場合のみ）
-        ❶ 常に相手の感情を最優先し、各メッセージを200文字以内で応答すること。
-        ❷ 以下の指針に基づき、共感的な対話を行い、詳細な情報を引き出すこと。
-            ・短い相槌を打ち、相手の感情を読み取り言語化して返す（例：「〇〇と感じていらっしゃるのですね」）。
-            ・共感の言葉を織り交ぜ、理解や驚きを示す相槌（例：「確かに」「お気持ちよくわかります」）を用いる。
-            ・感情の肯定、感情に関する自然な質問（例：「どんな気持ちになりそうですか？」「なぜそう感じるのでしょうか？」）を行う。
-            ・懸念には共感し背景の感情を確認する。他に気になることがないか優しく尋ね、具体例を求める。
-            ・期待にはポジティブな感情を共有し、実現後の変化や感情を掘り下げ、具体的なビジョンを聞く。
-        ❸ まず新しい業務や案件への期待・不安、理想の働き方について開かれた質問で会話を開始すること。
-        ❹ 回答が短い場合は「もう少し詳しく教えていただけますか？」「具体的にはどのような...？」で詳細を促すこと。
-        ❺ 会話の終わりには「貴重なお気持ちをありがとうございました」と感謝を伝えること。
+未取得属性が残る限り上記テンプレ順序を厳守し、感情的共感フレーズは最小化（最大20文字程度）しつつ核心の質問1つのみを返す。
+""")
+}}
+PROMPTS_business_Qgenerator = {
+    "business_Qgenerator": {
+        "instructions": ("""# 役割
+あなたは客観プロフィール収集の主担当です。必須20属性が全て『取得 / 拒否 / 不明確定』になるまで経験・スキルの自由深掘り質問は禁止。出力は常に未取得属性1件に集中した日本語の質問文1つのみ。
 
-        ────────────────────────────────
-        ▼応答例（ステップ1におけるAIの応答）：
-        （例1：懸念を聞き出す場合）
-        ユーザー: 新しい案件は興味があるけれど、自分のスキルで対応できるか不安です。
-        あなた: なるほど、スキル面でのご不安がおありなのですね。それは確かに心配になりますよね。新しいチャレンジに対して不安を感じるのは自然なことですし、責任感の現れでもありますね。具体的にはどのようなスキルの部分で不安を感じていらっしゃいますか？
+────────────────────────────────
+▼必須20属性（順序固定 / 途中でユーザーが先の属性を答えたら取得扱いしてスキップ）
+1 情報入手日 / 2 人材ID / 3 会社略称 / 4 名前(イニシャル) / 5 人材種別1 / 6 AC在籍有無 / 7 AC在籍期間 / 8 性別 / 9 年齢 / 10 稼働率 / 11 稼働開始可能日 / 12 希望単価 / 13 並行営業 / 14 リモート希望 / 15 可能地域 / 16 英語スキル / 17 アピールポイント / 18 直近の実績 / 19 レジュメ所在LINK URL / 20 備考
 
-                （例2：期待を聞き出す場合）
-                ユーザー: より専門性を活かせる業務に携わりたいと思っています。
-                あなた: そうなんですね！専門性を活かせる業務への期待をお持ちなのですね。それは本当に素晴らしい目標ですよね。専門性を存分に発揮できるようになったら、どのような充実感や達成感を感じられそうでしょうか？また、具体的にはどのような業務内容を思い描いていらっしゃいますか？
+▼アルゴリズム
+A 各ターン直前に全履歴を走査し取得済みを判定、未取得番号リストを再構成。
+B 未取得が空になるまで 1質問=リスト先頭1属性。複合質問禁止。
+C 回答内に複数属性含まれたらその全て取得済みとし重複質問禁止。
+D 拒否/不明=確定扱いで再質問禁止（年齢・性別など）。
+E あいまい表現は同属性内で具体化再質問し確定後に次へ。
+F 希望単価は『○○万円/月（税抜 or 税込） 交渉余地: ○○』表記誘導。
+G 直近実績は最大3件: 役割/期間/技術/規模/成果 箇条書き。
+H URL 未入手→後ほど共有依頼 + 『未入手（後ほど）』確定。
+I 20属性確定後に初めて自由なスキル深掘り（全体像→代表プロジェクト→成果/強み）へ移行。
+J 深掘り移行後も 1質問1論点。再び属性を直接訊かない。
 
-                ────────────────────────────────
-                ▼不足情報補完（希望・主観寄り項目の取得指針）
-                下記のうち未取得のものがあれば、会話の自然な流れで 1 質問 1 論点 で追加確認する。
-                取得対象（希望・感情の動機やこだわりを中心に）：
-                    ・稼働率 / 稼働開始可能日（背景事情や柔軟性）
-                    ・希望単価（根拠・交渉余地・譲れない条件）
-                    ・並行営業の有無（ある場合は他案件ジャンルや確度感）
-                    ・リモート希望（理由 / 出社許容頻度 / 妥協ライン）
-                    ・可能地域（移動制約・在住エリアの粒度）
-                    ・英語スキル（自己評価の根拠となる利用経験）
-                    ・アピールポイント（本人が最も推したい強みと場面）
-                    ・備考（不安・懸念・健康/時間的制約 など）
-                既に business 側で客観取得済みの項目は、重複せず「動機」「背景」「優先度」「譲歩可否」を掘り下げる。
-                拒否や不快の兆候があるセンシティブ項目（年齢/性別など）は追及しない。
-                すべて揃ったと判断したら簡潔に希望面の要約を返し、次工程（例：客観情報整理 or 推薦準備）への予告で締める。
-                """)
+▼テンプレ質問（未取得時のみ使用 / 必要最小限の敬語調整可）
+1 情報入手日を YYYY-MM-DD 形式で教えてください。
+2 人材ID（管理番号）があれば教えてください。
+3 提案元の会社略称を教えてください。
+4 レジュメ用イニシャル（例: TY）を教えてください。
+5 最も強みとなる人材種別（領域）を一つ挙げてください。
+6 アクセンチュア在籍経験はありますか？（有 / 無）
+7 在籍期間を分かる範囲で教えてください。（無い/不明ならその旨）
+8 性別を共有可能でしょうか？（任意 / 拒否可）
+9 年齢または年代を共有可能でしょうか？（任意 / 拒否可）
+10 希望される稼働率（例: 80%）を教えてください。
+11 稼働開始可能日（最短/目安）を教えてください。
+12 希望単価を『○○万円/月（税抜 or 税込） 交渉余地: ○○』形式で教えてください。
+13 現在並行して他案件営業はありますか？（有 / 無）
+14 リモート/出社の希望（フル / 一部（頻度）/ 問わない）を教えてください。
+15 稼働可能な地域（都道府県や最寄駅レベル）を教えてください。
+16 英語スキルレベル（ビジネス / 日常 / 読み書き / 不可）と根拠を教えてください。
+17 アピールポイントを短いキャッチ＋簡潔補足で教えてください。
+18 直近2～3件の案件実績を役割/期間/技術/規模/成果で簡潔に箇条書きください。
+19 レジュメ共有リンク（Dropbox 等）があれば教えてください。無ければ後ほどでも構いません。
+20 その他備考（制約・留意点など）があれば教えてください。
+
+未取得属性が残る限り上記テンプレ以外の深掘り・複合質問・雑談は禁止。常に次の未取得1件にのみ集中した質問を1つ返してください。
+""")
 }}
 PROMPTS_business_Qgenerator = {
     "business_Qgenerator": {
@@ -559,64 +560,6 @@ class InterviewSession:
         }
         self.topics_to_cover = self.phase_topics[self.current_phase].copy()
         self.current_topic = self.topics_to_cover[0] if self.topics_to_cover else None
-        # 20属性トラッキング
-        self.attribute_order = [
-            {"slug": "情報入手日", "phase": "business"},
-            {"slug": "人材ID", "phase": "business"},
-            {"slug": "会社略称", "phase": "business"},
-            {"slug": "名前", "phase": "business"},
-            {"slug": "人材種別1", "phase": "business"},
-            {"slug": "AC在籍有無", "phase": "business"},
-            {"slug": "AC在籍期間", "phase": "business"},
-            {"slug": "性別", "phase": "business"},
-            {"slug": "年齢", "phase": "business"},
-            {"slug": "稼働率", "phase": "emotional"},
-            {"slug": "稼働開始可能日", "phase": "emotional"},
-            {"slug": "希望単価", "phase": "emotional"},
-            {"slug": "並行営業", "phase": "emotional"},
-            {"slug": "リモート希望", "phase": "emotional"},
-            {"slug": "可能地域", "phase": "emotional"},
-            {"slug": "英語スキル", "phase": "emotional"},
-            {"slug": "アピールポイント", "phase": "emotional"},
-            {"slug": "直近の実績", "phase": "business"},
-            {"slug": "レジュメ所在LINK URL", "phase": "business"},
-            {"slug": "備考", "phase": "emotional"},
-        ]
-        # 値: {value: str|None, status: pending/obtained/refused/unknown}
-        self.attributes = {item["slug"]: {"value": None, "status": "pending"} for item in self.attribute_order}
-        self.current_attribute_slug = None
-
-    def get_remaining_attributes(self, phase_preference: str = None):
-        """未取得属性一覧（任意でフェーズ優先フィルタ）"""
-        rem = [a for a in self.attribute_order if self.attributes[a["slug"]]["status"] == "pending"]
-        if phase_preference:
-            primary = [a for a in rem if a["phase"] == phase_preference]
-            secondary = [a for a in rem if a["phase"] != phase_preference]
-            return primary + secondary
-        return rem
-
-    def mark_attribute(self, slug: str, answer: str):
-        if slug not in self.attributes or self.attributes[slug]["status"] != "pending":
-            return
-        ans = (answer or "").strip()
-        if not ans:
-            return
-        refusal_keywords = ["答えたくない", "非公開", "秘密", "わからない", "不明", "覚えていない", "無し", "ないです"]
-        if any(k in ans for k in refusal_keywords):
-            self.attributes[slug]["value"] = None
-            self.attributes[slug]["status"] = "refused" if any(k in ans for k in ["答えたくない", "非公開", "秘密"]) else "unknown"
-        else:
-            self.attributes[slug]["value"] = ans
-            self.attributes[slug]["status"] = "obtained"
-
-    def attributes_table_text(self):
-        lines = []
-        for item in self.attribute_order:
-            slug = item["slug"]
-            info = self.attributes[slug]
-            val = info["value"] if info["value"] is not None else "-"
-            lines.append(f"{slug}: {info['status']} / {val}")
-        return "\n".join(lines)
     
     def set_company_email(self, company_email):
         self.company_email = company_email
@@ -861,35 +804,16 @@ async def on_message(message: cl.Message):
                 return business_Qgenerator
             else:  
                 return emotional_Qgenerator
-
-        def decide_next_attribute():
-            # フェーズ優先で未取得属性を決める
-            phase_pref = "business" if session.current_phase == "業務内容フェーズ" else "emotional"
-            rem = session.get_remaining_attributes(phase_pref)
-            if rem:
-                return rem[0]["slug"]
-            return None
         
         # 初回質問の準備
         question_generator = get_current_question_generator()
-        # 初回は未取得属性があればそれを聞く指示を与える
-        next_attr = decide_next_attribute()
-        session.current_attribute_slug = next_attr
-        if next_attr:
-            initial_context = f"""
-            【現在のフェーズ】
-            {session.current_phase}
-            【未取得属性状況】\n{session.attributes_table_text()}
-            次の未取得属性「{next_attr}」について 1 つだけ明確に質問してください。まだ取得済みの属性に触れないこと。質問は一文。
-            """
-        else:
-            initial_context = f"""
-            【現在のフェーズ】
-            {session.current_phase}
-            【現在のトピック】
-            {session.current_topic}
-            最初の質問を生成してください。
-            """
+        initial_context = f"""
+        【現在のフェーズ】
+        {session.current_phase}
+        【現在のトピック】
+        {session.current_topic}
+        最初の質問を生成してください。
+        """
         # initial_context = f"""
         # 【インタビューコンテキスト】
         # {context_summary}
@@ -915,10 +839,6 @@ async def on_message(message: cl.Message):
             print(f"\n{session.current_phase}質問AI (Q{round_num}: {current_question}")
             answer =  user_input["output"]
             session.add_interview_qa(current_question, answer)
-            # 属性回答反映
-            if session.current_attribute_slug:
-                session.mark_attribute(session.current_attribute_slug, answer)
-                session.current_attribute_slug = None
             for i, (q, a) in enumerate(session.interview_history):
                 interview_history_text += f"Q{i+1}: {q}\nA{i+1}: {a}\n\n"
 
@@ -1063,28 +983,17 @@ async def on_message(message: cl.Message):
 
             elif manager_action.action_type == "deep_dive":
                 # 深掘り質問
-                # まだ未取得属性が残っているなら深掘りより属性優先
-                next_attr = decide_next_attribute()
-                if next_attr:
-                    session.current_attribute_slug = next_attr
-                    deep_dive_context = f"""
-                    【現在のフェーズ】
-                    {session.current_phase}
-                    【未取得属性状況】\n{session.attributes_table_text()}
-                    直前回答を踏まえつつ 未取得属性「{next_attr}」を自然に一問で取得してください。重複禁止。
-                    """
-                else:
-                    deep_dive_context = f"""
-                    【現在のフェーズ】
-                    {session.current_phase}
-                    【現在のトピック】
-                    {session.current_topic}
-                    【直前の質問】
-                    {current_question}
-                    【回答】
-                    {answer}
-                    上記の回答をさらに深掘りする質問を生成してください。
-                    具体的な数値や例を引き出す質問が望ましいです。"""
+                deep_dive_context = f"""
+                【現在のフェーズ】
+                {session.current_phase}
+                【現在のトピック】
+                {session.current_topic}
+                【直前の質問】
+                {current_question}
+                【回答】
+                {answer}
+                上記の回答をさらに深掘りする質問を生成してください。
+                具体的な数値や例を引き出す質問が望ましいです。"""
                 question_generator = get_current_question_generator()
                 question_result,log_entry = await run_ai_with_logging(question_generator, deep_dive_context)
                 interview_question = question_result.final_output_as(InterviewQuestion)
@@ -1111,29 +1020,18 @@ async def on_message(message: cl.Message):
 
             else:  # "next_question"
                 # 通常の次の質問
-                # 未取得属性があれば属性優先質問
-                next_attr = decide_next_attribute()
-                session.current_attribute_slug = next_attr
-                if next_attr:
-                    next_question_context = f"""
-                    【現在のフェーズ】
-                    {session.current_phase}
-                    【未取得属性状況】\n{session.attributes_table_text()}
-                    未取得属性「{next_attr}」を一つだけ丁寧に質問してください。既取得属性へは触れない。質問は一文。
-                    """
-                else:
-                    next_question_context = f"""
-                    【現在のフェーズ】
-                    {session.current_phase}
-                    【現在のトピック】
-                    {session.current_topic}
-                    【過去の質問と回答】
-                    {session.get_full_transcript()}
-                    【残り時間】
-                    {remaining_minutes:.1f}分
-                    次の質問を生成してください。
-                    過去に尋ねた質問と重複しないように注意してください。
-                    """
+                next_question_context = f"""
+                【現在のフェーズ】
+                {session.current_phase}
+                【現在のトピック】
+                {session.current_topic}
+                【過去の質問と回答】
+                {session.get_full_transcript()}
+                【残り時間】
+                {remaining_minutes:.1f}分
+                次の質問を生成してください。
+                過去に尋ねた質問と重複しないように注意してください。
+                """
             # else:  # "next_question"
             #     # 通常の次の質問
             #     next_question_context = f"""

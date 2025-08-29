@@ -5,41 +5,45 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 import chainlit as cl
-from firebase_admin import firestore,credentials,auth
+from firebase_admin import firestore, credentials, auth
 import firebase_admin
 import sys
 import requests
 
-os.environ["OPENAI_API_KEY"]=os.getenv("OPENAI_API_KEY")
-os.environ["CHAINLIT_AUTH_SECRET"]=os.getenv("CHAINLIT_AUTH_SECRET")
-os.environ["FIREBASE_API_KEY"]=os.getenv("FIREBASE_API_KEY")
-os.environ["FIREBASE_AUTH_DOMAIN"]=os.getenv("FIREBASE_AUTH_DOMAIN")
-os.environ["FIREBASE_PROJECT_ID"]=os.getenv("FIREBASE_PROJECT_ID")
-os.environ["FIREBASE_STORAGE_BUCKET"]=os.getenv("FIREBASE_STORAGE_BUCKET")
-os.environ["FIREBASE_MESSAGING_SENDER_ID"]=os.getenv("FIREBASE_MESSAGING_SENDER_ID")
-os.environ["FIREBASE_APP_ID"]=os.getenv("FIREBASE_APP_ID")
-os.environ["MEASUREMENT_ID"]=os.getenv("MEASUREMENT_ID")
-os.environ["FIREBASE_DATABASE_URL"]=os.getenv("FIREBASE_DATABASE_URL")
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"]=os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
+os.environ["CHAINLIT_AUTH_SECRET"] = os.getenv("CHAINLIT_AUTH_SECRET")
+os.environ["FIREBASE_API_KEY"] = os.getenv("FIREBASE_API_KEY")
+os.environ["FIREBASE_AUTH_DOMAIN"] = os.getenv("FIREBASE_AUTH_DOMAIN")
+os.environ["FIREBASE_PROJECT_ID"] = os.getenv("FIREBASE_PROJECT_ID")
+os.environ["FIREBASE_STORAGE_BUCKET"] = os.getenv("FIREBASE_STORAGE_BUCKET")
+os.environ["FIREBASE_MESSAGING_SENDER_ID"] = os.getenv(
+    "FIREBASE_MESSAGING_SENDER_ID")
+os.environ["FIREBASE_APP_ID"] = os.getenv("FIREBASE_APP_ID")
+os.environ["MEASUREMENT_ID"] = os.getenv("MEASUREMENT_ID")
+os.environ["FIREBASE_DATABASE_URL"] = os.getenv("FIREBASE_DATABASE_URL")
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv(
+    "GOOGLE_APPLICATION_CREDENTIALS")
 
 os.environ["USER_AGENT"] = os.getenv("USER_AGENT")
 db = firestore.Client()
 firebase_config = {
-  "apiKey": os.getenv("FIREBASE_API_KEY"),
+    "apiKey": os.getenv("FIREBASE_API_KEY"),
     "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
     "projectId": os.getenv("FIREBASE_PROJECT_ID"),
     "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
     "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"),
     "appId": os.getenv("FIREBASE_APP_ID"),
-  "measurementId": os.getenv("MEASUREMENT_ID"),
-  "databaseURL": os.getenv("FIREBASE_DATABASE_URL")
+    "measurementId": os.getenv("MEASUREMENT_ID"),
+    "databaseURL": os.getenv("FIREBASE_DATABASE_URL")
 }
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
+    cred = credentials.Certificate(
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
     firebase_admin.initialize_app(cred)
 
 auth_secret = os.getenv("CHAINLIT_AUTH_SECRET")
+
 
 class AIMessageLog(BaseModel):
     timestamp: str
@@ -47,30 +51,35 @@ class AIMessageLog(BaseModel):
     prompt: str
     response: str
     processing_time: float
+
 
 class NurturingResponse(BaseModel):
     explanation: str
     is_ready_to_proceed: bool
 
+
 class InterviewQuestion(BaseModel):
     question: str
 
+
 class ManagerAction(BaseModel):
-    action_type: str  
-    remaining_time: int 
-    covered_topics: List[str]  
-    uncovered_topics: List[str]  
-    next_topic: Optional[str] = None  
-    next_phase: Optional[str] = None  
-    message: str 
+    action_type: str
+    remaining_time: int
+    covered_topics: List[str]
+    uncovered_topics: List[str]
+    next_topic: Optional[str] = None
+    next_phase: Optional[str] = None
+    message: str
+
 
 class ResponseAnalysis(BaseModel):
-    response_score: float  
-    missing_information: List[str]  
-    detected_sentiments: List[str]  
-    follow_up_questions: List[str] 
-    recommended_action: str 
-    feedback: str 
+    response_score: float
+    missing_information: List[str]
+    detected_sentiments: List[str]
+    follow_up_questions: List[str]
+    recommended_action: str
+    feedback: str
+
 
 class AIMessageLog(BaseModel):
     timestamp: str
@@ -79,45 +88,31 @@ class AIMessageLog(BaseModel):
     response: str
     processing_time: float
 
-##エージェント関連
-#エージェントのプロンプト
-PROMPTS_manager = { "manager": {
-        "instructions":(""" あなたはインタビューの全体進行を管理するエージェントです。
+
+# エージェント関連
+# エージェントのプロンプト
+PROMPTS_manager = {"manager": {
+    "instructions": (""" あなたはインタビューの全体進行を管理するエージェントです。
             以下の役割を担います：
 
             1. 進行管理：制限時間に合わせて各質問の終了・次質問への移行を判断
             2. ゴール監視：事前に設定した「聞くべきトピック」をカバーできているかトラッキング
-            3. フェーズ管理：「経験・スキルフェーズ」から「希望・要望フェーズ」への移行を判断
-            4. **必須項目管理**：★質問カテゴリーの9項目が確実に収集されることを最優先
+            3. フェーズ管理：「業務内容フェーズ」から「感情フェーズ」への移行を判断
 
-            **重要：深掘りよりも網羅性を優先してください**
+            インタビューは2つのフェーズに分かれています：
+            - 業務内容フェーズ：現状業務や課題、要件などの客観的情報を収集
+            - 感情フェーズ：導入への期待や懸念など、個人的な感情や意見を収集
 
-            【必須収集項目（★質問カテゴリー）】
-            1. 直近の実績
-            2. 人材種別
-            3. アピールポイント
-            4. 稼働率
-            5. 稼働開始可能日
-            6. 希望単価
-            7. リモート希望
-            8. 可能地域
-            9. 英語スキル
+            インタビュー全体の流れを見て、次のアクションを決定してください：
+            - deep_dive: 同じトピックでさらに深掘りする
+            - switch_topic: 特定のトピックへ移行する
+            - switch_phase: 次のフェーズに移行する（業務内容→感情）
+            - end_interview: インタビューを終了する
 
-            【アクション判断基準】
-            - **必須項目が未収集の場合**: 必ず "switch_topic" で次の未収集項目へ
-            - **必須項目がすべて収集済みの場合のみ**: "deep_dive" を検討
-            - **経験・スキルフェーズ完了後**: "switch_phase" で希望・要望フェーズへ
-            - **両フェーズ完了後**: "end_interview"
-
-            次のアクションを決定してください：
-            - switch_topic: 次の必須項目へ移行（最優先）
-            - deep_dive: 同じトピックで深掘り（必須項目完了後のみ）
-            - switch_phase: 次のフェーズに移行（経験・スキル→希望・要望）
-            - end_interview: インタビューを終了
-
-            **網羅性を最優先し、深掘りは最小限に留めてください。**
+            業務内容フェーズのトピックが十分にカバーできたら、感情フェーズへの移行を指示してください。
+            「次はあなたの個人的な感想についてお聞きします」などのメッセージで移行をスムーズにします。
             """"")
-            }}
+}}
 
 PROMPTS_emotional_Qgenerator = {
     "emotional_Qgenerator": {
@@ -129,12 +124,13 @@ PROMPTS_emotional_Qgenerator = {
         ▼ステップ 0 : 対象判定（事前フィルタ）
         ❶ インタビュイーからの入力が、業務・案件マッチングに関する希望・要望のヒアリングと関連性があるか確認せよ。
         ❷ 以下のいずれかに該当する場合は、その旨を伝え、正確な情報の再入力を促し、このステップで即座に終了すること：
-
-            例：「恐れ入りますが、ご入力いただいた内容が、業務・案件マッチングに関するヒアリングの趣旨と異なるか、入力ミスの可能性がございます。お手数ですが、関連する希望・要望について再度ご入力いただけますでしょうか。」
-
         ★妥当性チェックで「該当する」と判断するケースの例
             ・業務や案件・キャリアと全く関連のない話題（例：「今日の天気は良いですね」）
             ・意味をなさない文字列、極端に短い入力、記号の羅列など、明らかに意図が不明な入力
+                         
+            例：「恐れ入りますが、ご入力いただいた内容が、業務・案件マッチングに関するヒアリングの趣旨と異なるか、入力ミスの可能性がございます。お手数ですが、関連する希望・要望について再度ご入力いただけますでしょうか。」
+
+
         ────────────────────────────────
         ▼ステップ 1 : 業務・案件マッチングに関する共感的対話（ステップ 0 を通過した場合のみ）
         ❶ 常に相手の感情を最優先し、各メッセージを200文字以内で応答すること。
@@ -157,7 +153,7 @@ PROMPTS_emotional_Qgenerator = {
         （例2：期待を聞き出す場合）
         インタビュイー: より専門性を活かせる業務に携わりたいと思っています。
         あなた: そうなんですね！専門性を活かせる業務への期待をお持ちなのですね。それは本当に素晴らしい目標ですよね。専門性を存分に発揮できるようになったら、どのような充実感や達成感を感じられそうでしょうか？また、具体的にはどのような業務内容を思い描いていらっしゃいますか？""")
-}}
+    }}
 PROMPTS_business_Qgenerator = {
     "business_Qgenerator": {
         "instructions": (""" あなたは経験豊富な人材アナリストです。
@@ -177,16 +173,14 @@ PROMPTS_business_Qgenerator = {
         ────────────────────────────────
         ▼ステップ 1 : 業務・案件マッチングのための詳細ヒアリング（ステップ 0 を通過した場合のみ）
         ❶ 以下の指針に基づき、業務・案件マッチングに必要な経験・スキル情報を深く収集するため、インタビュイーに質問すること。
+            ・「★質問カテゴリー」については、必ずすべて質問して情報を収集すること。
             ・具体的な経験と実績を重視し、期間、規模、技術・手法等の定量的情報を引き出す。
             ・質問は具体的かつ明確にし、1つの論点に絞る。曖昧な回答は掘り下げる。
-            ・経験の全体像から詳細、成果・強みへと順に把握する。
-            ・「なぜ」「どのように」「具体的には」を多用して詳細な情報を引き出す。
-            ・「★質問カテゴリー」については、必ずすべて質問して情報を収集すること。
                          
-        ❷ 以下の質問カテゴリーを参考に、状況に応じて質問を選択・組み合わせること。
+        ❷ 以下の質問カテゴリーを参考に、状況に応じて質問を選択すること。
                  ★質問カテゴリー
                     ・直近の実績: レジュメを参照した直近2～3案件の概要
-                    ・人材種別: その人材の得意スキルの中から一つ選択
+                    ・人材種別１: その人材の得意スキルの中から一つ選択
                     ・アピールポイント: インタビュイーが記述した提案概要のアピールポイント
                     ・稼働率: インタビュイーが希望する稼働率
                     ・稼働開始可能日: インタビュイーが案件に参画できる日付
@@ -251,12 +245,12 @@ PROMPTS_business_Qgenerator = {
 #             "##Rule"
 #             "- 要約する際は、重要な情報は保持し、内容が著しく損なわれないようにしてください。"
 #             "-日本語で要約を出力してください。"
-            
+
 #         )
 #     }
 # }
 
-PROMNPTS_NURTURING={
+PROMNPTS_NURTURING = {
     "nurturing": {
         "instructions": ("""
         あなたはインタビューの導入を担当するネイチャリングAIです。
@@ -277,9 +271,11 @@ PROMNPTS_NURTURING={
         """)}
 }
 
-#エージェント作成
+# エージェント作成
+
+
 def create_manager(custom_prompts=None):
-    #インタビュー管理エージェントを作成する関数
+    # インタビュー管理エージェントを作成する関数
     prompts = PROMPTS_manager.copy()
     if custom_prompts:
         for key, value in custom_prompts.items():
@@ -288,13 +284,14 @@ def create_manager(custom_prompts=None):
     manager = Agent(
         name="インタビュー管理AI",
         instructions=prompts["manager"]["instructions"],
-        output_type=ManagerAction,  
+        output_type=ManagerAction,
         model="gpt-4o",
     )
     return manager
 
+
 def create_business_Qgenerator(custom_prompts=None):
-    #業務内容フェーズ用質問生成AIエージェントを作成する関数
+    # 業務内容フェーズ用質問生成AIエージェントを作成する関数
     prompts = PROMPTS_business_Qgenerator.copy()
     if custom_prompts:
         for key, value in custom_prompts.items():
@@ -303,12 +300,13 @@ def create_business_Qgenerator(custom_prompts=None):
     business_Qgenerator = Agent(
         name="業務質問生成AI",
         instructions=prompts["business_Qgenerator"]["instructions"],
-        output_type=InterviewQuestion,  
+        output_type=InterviewQuestion,
     )
     return business_Qgenerator
 
+
 def create_emotional_Qgenerator(custom_prompts=None):
-    #感情フェーズ用質問生成AIエージェントを作成する関数
+    # 感情フェーズ用質問生成AIエージェントを作成する関数
     prompts = PROMPTS_emotional_Qgenerator.copy()
     if custom_prompts:
         for key, value in custom_prompts.items():
@@ -317,12 +315,13 @@ def create_emotional_Qgenerator(custom_prompts=None):
     emotional_Qgenerator = Agent(
         name="感情質問生成AI",
         instructions=prompts["emotional_Qgenerator"]["instructions"],
-        output_type=InterviewQuestion,  
+        output_type=InterviewQuestion,
     )
     return emotional_Qgenerator
 
+
 def create_nurturing(custom_prompts=None):
-    #ネイチャリングAIエージェントを作成する関数
+    # ネイチャリングAIエージェントを作成する関数
     prompts = PROMNPTS_NURTURING.copy()
     if custom_prompts:
         for key, value in custom_prompts.items():
@@ -331,17 +330,18 @@ def create_nurturing(custom_prompts=None):
     nurturing = Agent(
         name="ネイチャリングAI",
         instructions=prompts["nurturing"]["instructions"],
-        output_type=NurturingResponse,  
+        output_type=NurturingResponse,
     )
     return nurturing
 
-def get_company_nurturing(company_email:str)->str:
-    #firestoreからネイチャリングの情報をとってくる関数
-    doc_ref=db.collection(company_email).document("nurturing")
-    doc=doc_ref.get()
-    if doc.exists:#要確認
-        data=doc.to_dict()
-        return data.get("nurturing","ネイチャリングの情報がありません")
+
+def get_company_nurturing(company_email: str) -> str:
+    # firestoreからネイチャリングの情報をとってくる関数
+    doc_ref = db.collection(company_email).document("nurturing")
+    doc = doc_ref.get()
+    if doc.exists:  # 要確認
+        data = doc.to_dict()
+        return data.get("nurturing", "ネイチャリングの情報がありません")
     return "該当する会社が見つかりませんでした"
 
 # def create_summarizer(custom_prompts=None):
@@ -359,19 +359,19 @@ def get_company_nurturing(company_email:str)->str:
 #     )
 #     return summarizer
 
-def get_company_summary(company_email:str)->str:
-    #firestoreから要約情報をとってくる関数
-    doc_ref=db.collection(company_email).document("All-summary")
-    doc=doc_ref.get()
-    if doc.exists:#要確認
-        data=doc.to_dict()
-        return data.get("summary","要約情報がありません")
+
+def get_company_summary(company_email: str) -> str:
+    # firestoreから要約情報をとってくる関数
+    doc_ref = db.collection(company_email).document("All-summary")
+    doc = doc_ref.get()
+    if doc.exists:  # 要確認
+        data = doc.to_dict()
+        return data.get("summary", "要約情報がありません")
     return "該当するインタビュイーが見つかりませんでした"
 
 
-
 def firebase_login(email: str, password: str):
-    #emailとpassでのログイン関数
+    # emailとpassでのログイン関数
     api_key = os.getenv("FIREBASE_API_KEY")
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}"
     payload = {
@@ -382,9 +382,11 @@ def firebase_login(email: str, password: str):
     response = requests.post(url, json=payload)
     data = response.json()
     if "idToken" in data:
-        return data  
+        return data
     else:
         raise Exception(f"ログイン失敗: {data.get('error', {}).get('message')}")
+
+
 def get_account_info(id_token: str):
     api_key = os.getenv("FIREBASE_API_KEY")
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:lookup?key={api_key}"
@@ -395,6 +397,7 @@ def get_account_info(id_token: str):
 
     response = requests.post(url, json=payload)
     return response.json()
+
 
 async def run_ai_with_logging(agent, prompt, session=None):
     # AI実行をラップしてログを取得する関数
@@ -421,26 +424,30 @@ async def run_ai_with_logging(agent, prompt, session=None):
     # セッションが提供されていればログを追加
     if session:
         session.add_ai_communication_log(log_entry)
-    
-    return result,log_entry
 
-#要約AIによる最終要約作成関数
+    return result, log_entry
+
+# 要約AIによる最終要約作成関数
+
+
 async def generate_all_interview_summary(summarizer_ai, session, company_email):
     """インタビュー全体の要約を生成する"""
     transcript = session.get_full_transcript()
     prompt = f"【今回のインタビュー内容】\n{transcript}\n\n【今までのインタビュー内容の要約】\n{get_company_summary(company_email)}\n\n以上の情報を元に、上記のインタビュー内容を分析し、収集された経験・スキル情報、希望・要望事項、マッチング判断に重要なポイント、今後の案件紹介への推奨事項をまとめた包括的な要約レポートを作成してください。"
-    result, _ =await run_ai_with_logging(summarizer_ai, prompt, session)
+    result, _ = await run_ai_with_logging(summarizer_ai, prompt, session)
     return result.final_output
-    
+
+
 async def generate_interview_summary(summarizer_ai, session):
     """今回のインタビューの要約を生成する"""
     transcript = session.get_full_transcript()
     prompt = f"【今回のインタビュー内容】\n{transcript}\n\n以上の情報を元に、上記のインタビュー内容を分析し、主要な発見、課題点、提案された解決策、次のステップへの推奨事項をまとめた包括的な要約レポートを作成してください。"
-    result, _ =await run_ai_with_logging(summarizer_ai, prompt, session)
+    result, _ = await run_ai_with_logging(summarizer_ai, prompt, session)
     return result.final_output
 
-def create_firestore_document(company_email:str,email:str):
-    #firestoreの一枠を作成する関数
+
+def create_firestore_document(company_email: str, email: str):
+    # firestoreの一枠を作成する関数
     if any(db.collection(company_email).limit(1).stream()):
         print(f"{company_email}コレクションはすでに存在します")
         if db.collection(company_email).document(email).get().exists:
@@ -452,25 +459,27 @@ def create_firestore_document(company_email:str,email:str):
             print(f"Firestoreに{email}ドキュメントを作成しました")
     else:
         print(f"{company_email}コレクションは存在しません")
-        sys.exit()  
-        
+        sys.exit()
+
 # インタビューセッション管理クラス
+
+
 class InterviewSession:
     def __init__(self, company_email: str):
         self.company_email = company_email
         # 基本的なセッション情報を初期化
         self.context = None
         self.start_time = datetime.now()
-        self.interview_history: List[List[str,str]] = []
-        self.nurturing_history: List[List[str,str]] = []
-        self.analysis_logs = []      
-        self.manager_logs = []       
+        self.interview_history: List[List[str, str]] = []
+        self.nurturing_history: List[List[str, str]] = []
+        self.analysis_logs = []
+        self.manager_logs = []
         self.ai_communication_logs: List[AIMessageLog] = []
-        self.topics_to_cover = []    
-        self.covered_topics = []     
-        self.current_topic = None    
-        self.phase_complete={"nurting":False,"interview":False}
-        self.business_topics = []   
+        self.topics_to_cover = []
+        self.covered_topics = []
+        self.current_topic = None
+        self.phase_complete = {"nurting": False, "interview": False}
+        self.business_topics = []
         self.emotional_topics = []
 
         self.phases = ["業務内容フェーズ", "感情フェーズ"]
@@ -483,12 +492,12 @@ class InterviewSession:
         }
         self.topics_to_cover = self.phase_topics[self.current_phase].copy()
         self.current_topic = self.topics_to_cover[0] if self.topics_to_cover else None
-    
+
     def set_company_email(self, company_email):
         self.company_email = company_email
 
     # フェーズ切り替えメソッド
-    def switch_phase(self, new_phase,phases,phase_topics):
+    def switch_phase(self, new_phase, phases, phase_topics):
         """フェーズを切り替える"""
         if new_phase in phases and new_phase != self.current_phase:
             self.current_phase = new_phase
@@ -496,25 +505,25 @@ class InterviewSession:
             self.current_topic = self.topics_to_cover[0] if self.topics_to_cover else None
             return True
         return False
-    
+
     def add_ai_communication_log(self, log: AIMessageLog):
         """AI間の通信ログを追加"""
         self.ai_communication_logs.append(log)
-    
+
     def set_topics(self, topics):
         """カバーすべきトピックを設定"""
         self.topics_to_cover = topics.copy()
         self.covered_topics = []
         self.current_topic = topics[0] if topics else None
-    
+
     def add_interview_qa(self, question, answer):
         """インタビューの質問と回答を追加"""
         self.interview_history.append([question, answer])
-    
+
     def add_nurturing_interaction(self, ai_message, user_response):
         """ネイチャリングフェーズのやり取りを追加"""
         self.nurturing_history.append([ai_message, user_response])
-    
+
     def add_analysis_log(self, round_num: int, analysis: ResponseAnalysis):
         """回答分析のログを追加"""
         self.analysis_logs.append({
@@ -526,7 +535,7 @@ class InterviewSession:
             "recommended_action": analysis.recommended_action,
             "feedback": analysis.feedback
         })
-    
+
     def add_manager_log(self, round_num: int, action: ManagerAction):
         """管理エージェントのアクションログを追加"""
         self.manager_logs.append({
@@ -538,36 +547,35 @@ class InterviewSession:
             "next_topic": action.next_topic,
             "message": action.message
         })
-    
+
     def mark_topic_covered(self, topic: str):
         """トピックをカバー済みとしてマーク"""
         if topic in self.topics_to_cover and topic not in self.covered_topics:
             self.topics_to_cover.remove(topic)
             self.covered_topics.append(topic)
-    
+
     def set_current_topic(self, topic: str):
         """現在のトピックを設定"""
         self.current_topic = topic
-    
-    def get_business_topic(self,company_email:str):
-        #firestoreから要約情報をとってくる関数
-        doc_ref=db.collection(company_email).document("業務内容トピック")
-        doc=doc_ref.get()
+
+    def get_business_topic(self, company_email: str):
+        # firestoreから要約情報をとってくる関数
+        doc_ref = db.collection(company_email).document("業務内容トピック")
+        doc = doc_ref.get()
         if doc.exists:
-            data=doc.to_dict()
-            return data.get("業務内容トピック","業務フェーズにトピックはありません")
+            data = doc.to_dict()
+            return data.get("業務内容トピック", "業務フェーズにトピックはありません")
         return "業務フェーズにトピックはありません"
 
-    def get_emotional_topic(self,company_email:str):
-        #firestoreから要約情報をとってくる関数
-        doc_ref=db.collection(company_email).document("感情トピック")
-        doc=doc_ref.get()
+    def get_emotional_topic(self, company_email: str):
+        # firestoreから要約情報をとってくる関数
+        doc_ref = db.collection(company_email).document("感情トピック")
+        doc = doc_ref.get()
         if doc.exists:
-            data=doc.to_dict()
-            return data.get("感情トピック","感情フェーズにトピックはありません")
+            data = doc.to_dict()
+            return data.get("感情トピック", "感情フェーズにトピックはありません")
         return "感情フェーズにトピックはありません"
 
-    
     def get_full_transcript(self) -> str:
         """インタビューの全文書き起こしを取得"""
         transcript = "=== ネイチャリングフェーズ ===\n\n"
@@ -579,67 +587,68 @@ class InterviewSession:
             transcript += f"Q{i+1}: {q}\n"
             transcript += f"A{i+1}: {a}\n\n"
         return transcript
-    
+
     def get_remaining_time(self, time_limit_minutes: int) -> float:
         """残り時間を分単位で取得"""
         elapsed = (datetime.now() - self.start_time).total_seconds() / 60
         return max(0, time_limit_minutes - elapsed)
 
 
-##chainlit関連
+# chainlit関連
 @cl.password_auth_callback
-def auth_callback(email:str,password:str):
+def auth_callback(email: str, password: str):
     try:
-        firebase_user=firebase_login(email,password)
-        user_info=get_account_info(firebase_user["idToken"])
-        user_email=user_info["users"][0]["email"]
+        firebase_user = firebase_login(email, password)
+        user_info = get_account_info(firebase_user["idToken"])
+        user_email = user_info["users"][0]["email"]
         print(f"ログイン成功:{user_email}")
-        return cl.User(identifier=user_email,email= user_email)
+        return cl.User(identifier=user_email, email=user_email)
     except Exception as e:
         print(f"ログイン情報が正しくありません。再度入力してください：{str(e)}")
         return None
 
-#チャットを始める前の処理：
+# チャットを始める前の処理：
+
+
 @cl.on_chat_start
 async def on_chat_start():
-    res = await cl.AskUserMessage( content="準備ができたら「開始」と入力してください。").send()
+    res = await cl.AskUserMessage(content="準備ができたら「開始」と入力してください。").send()
     if res and res["output"].strip() == "開始":
-        await cl.Message(content=
-            "\n本インタビューでは「終了」と入力すれば、終了させることができます。\n"
-            "また、一つの質問に対しての**入力時間が30分を超えるとインタビューは初期化されます。**\n"
-            "したがって**30分以内に回答**するようにしてください。\n\n"
-            "**会話が終わった後は、会話の記録が完了するまでブラウザを閉じたり、消したりしないでください。**\n\n"
-            "それではインタビューを開始してよければ、「はい」と入力してください。"
-        ).send()
-        user=cl.user_session.get("user")
-        email=user.identifier
-        cl.user_session.set("email",email)
-        email=cl.user_session.get("email")
-        company_email=email.split("@")[1]
-        cl.user_session.set("session",InterviewSession(company_email))
+        await cl.Message(content="\n本インタビューでは「終了」と入力すれば、終了させることができます。\n"
+                         "また、一つの質問に対しての**入力時間が30分を超えるとインタビューは初期化されます。**\n"
+                         "したがって**30分以内に回答**するようにしてください。\n\n"
+                         "**会話が終わった後は、会話の記録が完了するまでブラウザを閉じたり、消したりしないでください。**\n\n"
+                         "それではインタビューを開始してよければ、「はい」と入力してください。"
+                         ).send()
+        user = cl.user_session.get("user")
+        email = user.identifier
+        cl.user_session.set("email", email)
+        email = cl.user_session.get("email")
+        company_email = email.split("@")[1]
+        cl.user_session.set("session", InterviewSession(company_email))
 
-        #firestoreのドキュメントを作成する
-        create_firestore_document(company_email=company_email,email=email)
+        # firestoreのドキュメントを作成する
+        create_firestore_document(company_email=company_email, email=email)
 
-        #ネイチャリングを取得してsessionに登録する
-        #db.collection(company_email).document(email).set({"email":email})
-        db.collection(company_email).document(email).set({"email":email})
-        context_nurturinig=get_company_nurturing(company_email=company_email)
-        #context_summary=get_company_summary(company_email=company_email)
-        cl.user_session.set("context_nurturinig",context_nurturinig)
-        #cl.user_session.set("context_summary",context_summary)
-        x_manager=0
-        y_manager=0
-        cl.user_session.set("x_manager",x_manager)
-        cl.user_session.set("y_manager",y_manager)
+        # ネイチャリングを取得してsessionに登録する
+        # db.collection(company_email).document(email).set({"email":email})
+        db.collection(company_email).document(email).set({"email": email})
+        context_nurturinig = get_company_nurturing(company_email=company_email)
+        # context_summary=get_company_summary(company_email=company_email)
+        cl.user_session.set("context_nurturinig", context_nurturinig)
+        # cl.user_session.set("context_summary",context_summary)
+        x_manager = 0
+        y_manager = 0
+        cl.user_session.set("x_manager", x_manager)
+        cl.user_session.set("y_manager", y_manager)
     else:
         await cl.Message(content="入力が確認できませんでした。").send()
 
 
 @cl.on_message
 async def on_message(message: cl.Message):
-    ##ネイチャリングの実行関数
-    async def run_nurturing_pahase(nurturing,session,context_nurturinig,trace_ai_communication=True):
+    # ネイチャリングの実行関数
+    async def run_nurturing_pahase(nurturing, session, context_nurturinig, trace_ai_communication=True):
         if trace_ai_communication:
             print("AI通信トレースが有効化されています\n")
 
@@ -652,24 +661,25 @@ async def on_message(message: cl.Message):
         プライバシー保護方針を丁寧に説明し、安心感を与える導入を行ってください。
         説明後は、インタビューを開始してもよいか確認してください。
         """
-        nurturing_result,log_entry = await run_ai_with_logging(nurturing, nurturing_prompt)
-        nurturing_response = nurturing_result.final_output_as(NurturingResponse)
+        nurturing_result, log_entry = await run_ai_with_logging(nurturing, nurturing_prompt)
+        nurturing_response = nurturing_result.final_output_as(
+            NurturingResponse)
         ai_message = nurturing_response.explanation
         print(f"AI: {ai_message}\n")
-        user_input=await cl.AskUserMessage(content=f"{ai_message}",timeout=108000).send()
+        user_input = await cl.AskUserMessage(content=f"{ai_message}", timeout=108000).send()
         nurturing_complete = nurturing_response.is_ready_to_proceed
         previous_explanation = ai_message
         user_response = user_input["output"]
         print(f"インタビュイー: {user_response}\n")
         session.add_nurturing_interaction(ai_message, user_response)
-        nurturing_history_text=""
+        nurturing_history_text = ""
 
-        while not nurturing_complete:            
-        # 終了条件のチェック
+        while not nurturing_complete:
+            # 終了条件のチェック
             if user_response.lower() in ["終了"]:
                 print("\n🛑 インタビューを終了します。")
                 return session
-        
+
             # AIの応答を生成
             nurturing_prompt = f"""
             【インタビューコンテキスト】
@@ -683,12 +693,13 @@ async def on_message(message: cl.Message):
             まだ不安や疑問がある場合は、それに応え、再度確認を行ってください。
             ただし同じような確認は二度行わないようにしてください。
             """
-            
-            nurturing_result,log_entry = await run_ai_with_logging(nurturing, nurturing_prompt)
-            nurturing_response = nurturing_result.final_output_as(NurturingResponse)
+
+            nurturing_result, log_entry = await run_ai_with_logging(nurturing, nurturing_prompt)
+            nurturing_response = nurturing_result.final_output_as(
+                NurturingResponse)
             ai_message = nurturing_response.explanation
             print(f"\nAI: {ai_message}\n")
-            user_input=await cl.AskUserMessage(content=f"{ai_message}",timeout=108000).send()
+            user_input = await cl.AskUserMessage(content=f"{ai_message}", timeout=108000).send()
 
             previous_explanation = ai_message
             user_response = user_input["output"]
@@ -700,34 +711,35 @@ async def on_message(message: cl.Message):
             if user_input is None or not user_response:
                 await cl.Message("\n入力の制限時間に達しました。インタビューを終了します。").send()
                 break
-            
+
             # インタビュイーが了承したかチェック
             nurturing_complete = nurturing_response.is_ready_to_proceed
-            
+
             if nurturing_complete:
                 print("\n--- ネイチャリングフェーズ完了 ---")
-                cl.user_session.set("nurturing_history_text",nurturing_history_text),session
+                cl.user_session.set("nurturing_history_text",
+                                    nurturing_history_text), session
                 print("--- インタビュー質問フェーズを開始します ---\n")
         return True
-    
-    ##インタビューの実行関数
-    async def run_interview_phase(manager,business_Qgenerator,emotional_Qgenerator, session,max_rounds:int,time_limit_minutes:int,trace_ai_communication=True):
-    #async def run_interview_phase(manager,business_Qgenerator,emotional_Qgenerator, session, context_summary,max_rounds:int,time_limit_minutes:int,trace_ai_communication=True):
+
+    # インタビューの実行関数
+    async def run_interview_phase(manager, business_Qgenerator, emotional_Qgenerator, session, max_rounds: int, time_limit_minutes: int, trace_ai_communication=True):
+        # async def run_interview_phase(manager,business_Qgenerator,emotional_Qgenerator, session, context_summary,max_rounds:int,time_limit_minutes:int,trace_ai_communication=True):
         if trace_ai_communication:
             print("🔍 AI通信トレースが有効化されています\n")
         """インタビュー質問フェーズを実行する"""
 
         print(f"業務内容フェーズのトピック:{session.topics_to_cover}")
         print(f"感情フェーズのトピック:{session.current_topic}")
-        x_manager=cl.user_session.get("x_manager")
-        y_manager=cl.user_session.get("y_manager")
+        x_manager = cl.user_session.get("x_manager")
+        y_manager = cl.user_session.get("y_manager")
 
         def get_current_question_generator():
             if session.current_phase == "業務内容フェーズ":
                 return business_Qgenerator
-            else:  
+            else:
                 return emotional_Qgenerator
-        
+
         # 初回質問の準備
         question_generator = get_current_question_generator()
         initial_context = f"""
@@ -746,8 +758,8 @@ async def on_message(message: cl.Message):
         # {session.current_topic}
         # 最初の質問を生成してください。
         # """
-        interview_history_text=""
-        initial_result,log_entry = await run_ai_with_logging(question_generator, initial_context, session)
+        interview_history_text = ""
+        initial_result, log_entry = await run_ai_with_logging(question_generator, initial_context, session)
         initial_question = initial_result.final_output_as(InterviewQuestion)
         current_question = initial_question.question
 
@@ -758,9 +770,10 @@ async def on_message(message: cl.Message):
                 await cl.Message("\n制限時間に達しました。インタビューを終了します。").send()
                 break
 
-            user_input=await cl.AskUserMessage(content=f"(Q{round_num}: {current_question}",timeout=108000).send()
-            print(f"\n{session.current_phase}質問AI (Q{round_num}: {current_question}")
-            answer =  user_input["output"]
+            user_input = await cl.AskUserMessage(content=f"(Q{round_num}: {current_question}", timeout=108000).send()
+            print(
+                f"\n{session.current_phase}質問AI (Q{round_num}: {current_question}")
+            answer = user_input["output"]
             session.add_interview_qa(current_question, answer)
             for i, (q, a) in enumerate(session.interview_history):
                 interview_history_text += f"Q{i+1}: {q}\nA{i+1}: {a}\n\n"
@@ -778,7 +791,7 @@ async def on_message(message: cl.Message):
             if answer.lower() in ["終了"]:
                 print("\n インタビューを終了します。")
                 return session
-            
+
             # インタビュー管理AIによるアクション判断（回答分析なしの簡易版）
             manager_context = f"""
             【現在の状況】
@@ -814,29 +827,29 @@ async def on_message(message: cl.Message):
             # フェーズを切り替えるべきか、インタビューを終了すべきかを判断してください。
             # ただし同じような質問は二度行わないようにしてください。
             # """
-            manager_result,log_entry = await run_ai_with_logging(manager,manager_context, session)
-            manager_action= manager_result.final_output_as(ManagerAction)
+            manager_result, log_entry = await run_ai_with_logging(manager, manager_context, session)
+            manager_action = manager_result.final_output_as(ManagerAction)
             if trace_ai_communication:
                 last_log = session.ai_communication_logs[-1]
                 print(f"\n2AI通信トレース - {last_log.agent_name}:")
                 print(f"  処理時間: {last_log.processing_time:.2f}秒")
                 print("AI通信トレースが有効化されています\n")
-                x_manager+=last_log.processing_time
-                
+                x_manager += last_log.processing_time
+
             # インタビュー管理AIアクションのログ記録
             session.add_manager_log(round_num, manager_action)
 
             # マインタビュー管理AIアクションに基づく処理
             print(f"\nインタビュー管理AI: {manager_action.message}")
-            
-            if manager_action.action_type == "end_interview" or round_num==max_rounds:
+
+            if manager_action.action_type == "end_interview" or round_num == max_rounds:
                 print("\nインタビュー管理AI: インタビューを終了します。")
                 print(f"指揮AIの出力時間合計:{x_manager}")
-                break    
+                break
             elif manager_action.action_type == "switch_phase":
                 # フェーズ切り替え
                 if manager_action.next_phase and manager_action.next_phase in session.phases:
-                    if session.switch_phase(manager_action.next_phase,session.phases,session.phase_topics):
+                    if session.switch_phase(manager_action.next_phase, session.phases, session.phase_topics):
                         print(f"\nフェーズを切り替えました: {session.current_phase}")
                         # 新フェーズの質問生成AIを取得
                         question_generator = get_current_question_generator()
@@ -862,18 +875,19 @@ async def on_message(message: cl.Message):
                         # 【過去の質問と回答】
                         # {session.get_full_transcript()}
                         # 【残り時間】
-                        # {remaining_minutes:.1f}分                        
+                        # {remaining_minutes:.1f}分
                         # {session.current_phase}の最初の質問を生成してください。
                         # """
-                        question_result,log_entry = await run_ai_with_logging(question_generator, phase_context)
-                        interview_question = question_result.final_output_as(InterviewQuestion)
+                        question_result, log_entry = await run_ai_with_logging(question_generator, phase_context)
+                        interview_question = question_result.final_output_as(
+                            InterviewQuestion)
                         current_question = interview_question.question
             elif manager_action.action_type == "switch_topic":
                 # トピック切り替え
                 if session.current_topic:
                     session.mark_topic_covered(session.current_topic)
                 session.set_current_topic(manager_action.next_topic)
-                
+
                 # 新トピックに対する質問生成
                 question_generator = get_current_question_generator()
                 topic_context = f"""
@@ -895,13 +909,14 @@ async def on_message(message: cl.Message):
                 # 【現在のトピック】
                 # {session.current_topic}
                 # 【過去の質問と回答】
-                # {session.get_full_transcript()}  
+                # {session.get_full_transcript()}
                 # 【残り時間】
                 # {remaining_minutes:.1f}
                 # 新しいトピック「{session.current_topic}」について、最初の質問を生成してください。
                 # """
-                question_result,log_entry = await run_ai_with_logging(question_generator, topic_context)
-                interview_question = question_result.final_output_as(InterviewQuestion)
+                question_result, log_entry = await run_ai_with_logging(question_generator, topic_context)
+                interview_question = question_result.final_output_as(
+                    InterviewQuestion)
                 current_question = interview_question.question
 
             elif manager_action.action_type == "deep_dive":
@@ -918,8 +933,9 @@ async def on_message(message: cl.Message):
                 上記の回答をさらに深掘りする質問を生成してください。
                 具体的な数値や例を引き出す質問が望ましいです。"""
                 question_generator = get_current_question_generator()
-                question_result,log_entry = await run_ai_with_logging(question_generator, deep_dive_context)
-                interview_question = question_result.final_output_as(InterviewQuestion)
+                question_result, log_entry = await run_ai_with_logging(question_generator, deep_dive_context)
+                interview_question = question_result.final_output_as(
+                    InterviewQuestion)
                 current_question = interview_question.question
             # elif manager_action.action_type == "deep_dive":
             #     # 深掘り質問
@@ -973,51 +989,54 @@ async def on_message(message: cl.Message):
             #     """
                 question_generator = get_current_question_generator()
                 question_result = await run_ai_with_logging(question_generator, next_question_context)
-                interview_question = question_result.final_output_as(InterviewQuestion)
+                interview_question = question_result.final_output_as(
+                    InterviewQuestion)
                 current_question = interview_question.question
-            cl.user_session.set("interview_history_text",interview_history_text)
+            cl.user_session.set("interview_history_text",
+                                interview_history_text)
         return True
 
-    ##インタビュー全体を実行する関数
-    async def run_interview(max_rounds: int, time_limit_minutes:int, trace_ai_communication=True):
-        #インタビュー実行準備   デフォルト値があるものが最初にくるようにする
-        email=cl.user_session.get("email")
-        company_email=email.split("@")[1]
-        session=cl.user_session.get("session")
-        context_nurturinig=cl.user_session.get("context_nurturinig")
-        #context_summary=cl.user_session.get("context_summary")
-        cl.user_session.set("manager",create_manager(custom_prompts=None))
-        cl.user_session.set("business_Qgenerator",create_business_Qgenerator(custom_prompts=None))
-        cl.user_session.set("emotional_Qgenerator",create_emotional_Qgenerator(custom_prompts=None))
-        cl.user_session.set("nurturing",create_nurturing(custom_prompts=None))
-        #cl.user_session.set("summarizer",create_summarizer(custom_prompts=None))
-        manager=cl.user_session.get("manager")
-        business_Qgenerator=cl.user_session.get("business_Qgenerator")
-        emotional_Qgenerator=cl.user_session.get("emotional_Qgenerator")
-        nurturing=cl.user_session.get("nurturing")
-        #summarizer=cl.user_session.get("summarizer")
+    # インタビュー全体を実行する関数
+    async def run_interview(max_rounds: int, time_limit_minutes: int, trace_ai_communication=True):
+        # インタビュー実行準備   デフォルト値があるものが最初にくるようにする
+        email = cl.user_session.get("email")
+        company_email = email.split("@")[1]
+        session = cl.user_session.get("session")
+        context_nurturinig = cl.user_session.get("context_nurturinig")
+        # context_summary=cl.user_session.get("context_summary")
+        cl.user_session.set("manager", create_manager(custom_prompts=None))
+        cl.user_session.set("business_Qgenerator",
+                            create_business_Qgenerator(custom_prompts=None))
+        cl.user_session.set("emotional_Qgenerator",
+                            create_emotional_Qgenerator(custom_prompts=None))
+        cl.user_session.set("nurturing", create_nurturing(custom_prompts=None))
+        # cl.user_session.set("summarizer",create_summarizer(custom_prompts=None))
+        manager = cl.user_session.get("manager")
+        business_Qgenerator = cl.user_session.get("business_Qgenerator")
+        emotional_Qgenerator = cl.user_session.get("emotional_Qgenerator")
+        nurturing = cl.user_session.get("nurturing")
+        # summarizer=cl.user_session.get("summarizer")
 
-        
         # ネイチャリングフェーズの実行
         if not session.phase_complete["nurting"]:
             nurturing_success = await run_nurturing_pahase(nurturing, session, context_nurturinig, trace_ai_communication=True)
             if not nurturing_success:
                 print("\nネイチャリングフェーズで終了しました。")
                 return session
-            session.phase_complete["nurting"]=True
-            
-        #インタビューフェーズの実行
+            session.phase_complete["nurting"] = True
+
+        # インタビューフェーズの実行
         if not session.phase_complete["interview"]:
-            await run_interview_phase(manager, business_Qgenerator, emotional_Qgenerator, session,max_rounds, time_limit_minutes,trace_ai_communication=True)
-            #await run_interview_phase(manager, business_Qgenerator, emotional_Qgenerator, session, context_summary,max_rounds, time_limit_minutes,trace_ai_communication=True)
+            await run_interview_phase(manager, business_Qgenerator, emotional_Qgenerator, session, max_rounds, time_limit_minutes, trace_ai_communication=True)
+            # await run_interview_phase(manager, business_Qgenerator, emotional_Qgenerator, session, context_summary,max_rounds, time_limit_minutes,trace_ai_communication=True)
 
-        interview_history_text=cl.user_session.get("interview_history_text")
-        nurturing_history_text=cl.user_session.get("nurturing_history_text")
+        interview_history_text = cl.user_session.get("interview_history_text")
+        nurturing_history_text = cl.user_session.get("nurturing_history_text")
 
-        #db.collection(company_email).document("All-summary").set({"summary":final_all_summary.__dict__},merge=True)
-        db.collection(company_email).document(email).set({"nurturing":nurturing_history_text,"interview":interview_history_text,"timestamp":firestore.SERVER_TIMESTAMP},merge=True)
+        # db.collection(company_email).document("All-summary").set({"summary":final_all_summary.__dict__},merge=True)
+        db.collection(company_email).document(email).set(
+            {"nurturing": nurturing_history_text, "interview": interview_history_text, "timestamp": firestore.SERVER_TIMESTAMP}, merge=True)
         await cl.Message("インタビューはこれで終了になります。ご回答いただき、ありがとうございました。\nブラウザを閉じてください。").send()
         print("\nインタビューが完了しました。\n")
 
-
-    await run_interview(max_rounds=30, trace_ai_communication=True,time_limit_minutes=30)
+    await run_interview(max_rounds=30, trace_ai_communication=True, time_limit_minutes=30)

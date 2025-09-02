@@ -970,9 +970,9 @@ async def on_message(message: cl.Message):
             #     過去に尋ねた質問と重複しないように注意してください。
             #     """
                 question_generator = get_current_question_generator()
-                question_result = await run_ai_with_logging(question_generator, next_question_context)
-                interview_question = question_result.final_output_as(
-                    InterviewQuestion)
+                # 修正: タプルをアンパック
+                question_result, log_entry = await run_ai_with_logging(question_generator, next_question_context)
+                interview_question = question_result.final_output_as(InterviewQuestion)
                 current_question = interview_question.question
             cl.user_session.set("interview_history_text",
                                 interview_history_text)
